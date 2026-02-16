@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>DarkDrop Elite</title>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #f97316;
+            --secondary: #8b5cf6;
+            --bg: #020617;
+        }
+
+        /* Use 100dvh to account for mobile browser bars automatically */
+        body { 
+            background-color: var(--bg); 
+            color: #f8fafc; 
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden; 
+            width: 100%;
+            height: 100dvh; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- Background FX --- */
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 10s infinite ease-in-out;
+        }
+        @keyframes float { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(20px, -20px); } }
+
+        /* --- Desktop Container Wrapper --- */
+        #app-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 600px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 768px) {
+            #app-wrapper {
+                height: 90%;
+                max-height: 900px;
+                border-radius: 40px;
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                background: rgba(2, 6, 23, 0.5);
+                backdrop-filter: blur(20px);
+            }
+        }
+
+        /* --- View System --- */
+        .view {
+            position: absolute;
+            inset: 0;
+            padding: 1.5rem;
+            padding-bottom: 120px; /* Huge padding at bottom so content isn't hidden behind nav */
+            overflow-y: auto;
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(0.95) translateY(10px);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .view.active {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1) translateY(0);
+            z-index: 10;
+        }
+
+        /* --- Components --- */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- NAVIGATION DOCK (FIXED) --- */
+        /* Fixed positioning relative to viewport, not container */
+        .nav-dock {
+            position: fixed;
+            bottom: 40px; /* Push up from bottom */
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 16px;
+            padding: 12px 24px;
+            border-radius: 32px;
+            z-index: 999; /* Always on top */
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            /* Handle iPhone Home Bar */
+            margin-bottom: env(safe-area-inset-bottom);
+        }
+
+        .nav-item {
+            width: 52px;
+            height: 52px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .nav-item.active {
+            background: white;
+            color: black;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+            transform: translateY(-8px);
+        }
+
+        /* --- SCANNER FIXES --- */
+        /* Force the video to fill the screen */
+        #reader video { 
+            object-fit: cover; 
+            width: 100% !important; 
+            height: 100% !important; 
+        }
+        
+        /* HIDE the library's default overlay borders */
+        #reader__scan_region { display: none !important; }
+        #reader div { box-shadow: none !important; border: none !important; }
+
+        /* Custom Scanner Frame */
+        .scanner-frame {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            transition: all 0.4s ease;
+        }
+
+        .corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 5px solid rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        .corner.tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+        .corner.tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+        .corner.bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+        .corner.br { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+        .scanner-frame.success .corner {
+            border-color: #22c55e;
+            box-shadow: 0 0 30px #22c55e;
+            width: 60px; height: 60px; 
+        }
+        /* Grip Animation */
+        .scanner-frame.success .corner.tl { transform: translate(10px, 10px); }
+        .scanner-frame.success .corner.tr { transform: translate(-10px, 10px); }
+        .scanner-frame.success .corner.bl { transform: translate(10px, -10px); }
+        .scanner-frame.success .corner.br { transform: translate(-10px, -10px); }
+
+        .laser {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: linear-gradient(90deg, transparent, #f97316, transparent);
+            box-shadow: 0 0 25px #f97316;
+            animation: scan-vertical 2s ease-in-out infinite;
+        }
+        @keyframes scan-vertical { 0% { top: 10px; opacity: 0; } 50% { opacity: 1; } 100% { top: 240px; opacity: 0; } }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Background FX -->
+    <div class="blob bg-orange-600 w-96 h-96 rounded-full top-0 left-0 fixed"></div>
+    <div class="blob bg-purple-600 w-[30rem] h-[30rem] rounded-full bottom-0 right-0 fixed animation-delay-2000"></div>
+
+    <div id="app-wrapper">
+
+        <!-- ================= VIEW: HOME ================= -->
+        <section id="view-home" class="view active flex flex-col justify-center">
+            <div class="w-full text-center space-y-8">
+                <div class="space-y-2">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-white/10 text-[10px] tracking-widest uppercase font-bold text-slate-400">
+                        <div id="statusDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></div>
+                        <span id="statusText">Initializing...</span>
+                    </div>
+                    <h1 class="text-6xl font-black tracking-tighter text-white pb-2">DarkDrop<span class="text-orange-500">.</span></h1>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mt-8">
+                    <button onclick="router('send')" class="glass-panel p-6 rounded-3xl flex flex-col items-center gap-4 hover:bg-slate-800/50 transition-colors group">
+                        <div class="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
+                            <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                        </div>
+                        <span class="font-bold">Send</span>
+                    </button>
+                    <button onclick="router('receive')" class="glass-panel p-6 rounded-3xl flex flex-col items-center gap-4 hover:bg-slate-800/50 transition-colors group">
+                        <div class="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center text-purple-500 group-hover:scale-110 transition-transform">
+                            <i data-lucide="download-cloud" class="w-6 h-6"></i>
+                        </div>
+                        <span class="font-bold">Receive</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: SEND ================= -->
+        <section id="view-send" class="view flex flex-col">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold">Send</h2>
+                <p class="text-slate-400 text-sm">Drag files or tap to select</p>
+            </header>
+
+            <div class="flex-1 flex flex-col gap-4">
+                <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="flex-1 min-h-[300px] border-2 border-dashed border-slate-700 rounded-[2.5rem] flex flex-col items-center justify-center gap-6 hover:bg-slate-800/30 hover:border-orange-500 transition-all cursor-pointer group relative overflow-hidden">
+                    <input type="file" id="fileInput" class="hidden" multiple>
+                    <div class="w-24 h-24 bg-gradient-to-tr from-slate-900 to-slate-800 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl z-10 border border-white/5">
+                        <i data-lucide="plus" class="w-10 h-10 text-orange-500"></i>
+                    </div>
+                    <div class="text-center z-10">
+                        <h3 class="font-bold text-xl">Select Files</h3>
+                        <p class="text-xs text-slate-500 mt-1">or Drag & Drop</p>
+                    </div>
+                </div>
+
+                <div id="sendReadyState" class="hidden flex-1 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-500">
+                    <div class="glass-panel rounded-[2rem] p-6 mb-4 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500">
+                            <i data-lucide="file-check" class="w-7 h-7"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h4 id="fileNameDisplay" class="font-bold truncate text-lg">...</h4>
+                            <p id="fileSizeDisplay" class="text-xs text-slate-500 font-mono">0 MB</p>
+                        </div>
+                        <button onclick="resetApp()" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white transition-colors">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <div class="glass-panel rounded-[2.5rem] flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
+                        <div class="bg-white p-4 rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.1)]">
+                            <div id="qrcode"></div>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-widest">Or Share Key</p>
+                            <button onclick="copyId()" class="flex items-center gap-3 px-6 py-4 bg-slate-950 rounded-2xl border border-white/10 active:scale-95 transition-all w-full justify-center">
+                                <span id="myIdDisplay" class="font-mono text-orange-400 text-xl tracking-wider">...</span>
+                                <i data-lucide="copy" class="w-4 h-4 text-slate-500"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: RECEIVE ================= -->
+        <section id="view-receive" class="view flex flex-col">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold">Receive</h2>
+                <p class="text-slate-400 text-sm">Scan or enter key</p>
+            </header>
+
+            <div class="space-y-6">
+                <button onclick="startScanner()" class="w-full py-16 bg-gradient-to-b from-slate-900 to-slate-950 rounded-[2.5rem] border border-white/5 relative overflow-hidden group flex flex-col items-center justify-center gap-6 shadow-2xl active:scale-[0.98] transition-all">
+                    <div class="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+                    <div class="relative">
+                        <div class="absolute inset-0 bg-purple-500 blur-3xl opacity-20 rounded-full group-hover:opacity-40 transition-opacity"></div>
+                        <div class="relative w-24 h-24 bg-slate-900 rounded-3xl border border-white/10 flex items-center justify-center shadow-xl group-hover:-translate-y-2 transition-transform duration-500">
+                            <i data-lucide="scan-line" class="w-10 h-10 text-purple-400"></i>
+                        </div>
+                    </div>
+                    <div class="text-center z-10">
+                        <span class="block font-bold text-xl tracking-tight text-white mb-1">Scan QR Code</span>
+                        <span class="text-xs text-purple-400/80 font-medium tracking-wide uppercase">Open Camera</span>
+                    </div>
+                </button>
+
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center justify-center"><div class="w-full border-t border-white/5"></div></div>
+                    <div class="relative flex justify-center text-xs uppercase tracking-widest text-slate-500 bg-[#020617] px-4 mx-auto w-fit">Or enter manually</div>
+                </div>
+
+                <div class="glass-panel p-2 rounded-[1.5rem] flex items-center gap-2 pr-2 shadow-lg">
+                    <div class="w-12 h-12 flex items-center justify-center text-slate-500">
+                        <i data-lucide="key" class="w-5 h-5"></i>
+                    </div>
+                    <input type="text" id="remoteIdInput" placeholder="ENTER-KEY-HERE" class="flex-1 bg-transparent border-none outline-none text-white font-mono text-lg placeholder-slate-600 uppercase">
+                    <button onclick="connectToPeer()" class="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center text-white hover:bg-purple-500 transition-colors shadow-lg shadow-purple-900/50">
+                        <i data-lucide="arrow-right" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: TRANSFER OVERLAY ================= -->
+        <section id="view-transfer" class="view flex flex-col items-center justify-center z-50 bg-[#020617] absolute inset-0">
+            <div class="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none"></div>
+            
+            <div class="w-full text-center relative z-10">
+                <div class="relative w-72 h-72 mx-auto mb-12">
+                    <svg class="w-full h-full -rotate-90 filter drop-shadow-[0_0_15px_rgba(249,115,22,0.3)]">
+                        <circle cx="144" cy="144" r="130" stroke="#1e293b" stroke-width="12" fill="none"></circle>
+                        <circle id="progressCircle" cx="144" cy="144" r="130" stroke="#f97316" stroke-width="12" fill="none" stroke-dasharray="816" stroke-dashoffset="816" stroke-linecap="round" class="transition-all duration-300"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                        <span id="percentText" class="text-6xl font-black tracking-tighter text-white">0%</span>
+                        <span id="transferRate" class="text-xs font-mono text-slate-400 mt-2 bg-slate-900 px-3 py-1 rounded-full">Connecting...</span>
+                    </div>
+                </div>
+
+                <h2 id="transferStatusTitle" class="text-3xl font-bold mb-2 text-white">Syncing Data</h2>
+                <p id="transferMeta" class="text-slate-500 text-sm mb-10 font-medium">Do not close this tab</p>
+
+                <div class="space-y-4 px-8 max-w-sm mx-auto">
+                    <button id="downloadBtn" onclick="downloadFile()" class="hidden w-full py-5 bg-white text-black rounded-2xl font-black text-lg shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                        <i data-lucide="check-circle-2" class="w-6 h-6"></i> SAVE FILE
+                    </button>
+                    
+                    <button onclick="resetApp()" class="w-full py-4 text-slate-500 text-xs font-bold tracking-widest hover:text-white hover:bg-white/5 rounded-xl transition-all">
+                        CANCEL TRANSFER
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- End App Wrapper -->
+
+    <!-- Navigation Dock (MOVED OUTSIDE WRAPPER) -->
+    <nav class="nav-dock">
+        <button onclick="router('home')" class="nav-item active" id="nav-home"><i data-lucide="home" class="w-6 h-6"></i></button>
+        <button onclick="router('send')" class="nav-item" id="nav-send"><i data-lucide="send" class="w-6 h-6"></i></button>
+        <button onclick="router('receive')" class="nav-item" id="nav-receive"><i data-lucide="arrow-down-to-line" class="w-6 h-6"></i></button>
+    </nav>
+
+    <!-- ================= SCANNER MODAL ================= -->
+    <div id="scannerModal" class="fixed inset-0 z-[100] bg-black hidden flex items-center justify-center">
+        <button onclick="stopScanner()" class="absolute top-8 right-8 z-50 bg-black/50 border border-white/20 p-4 rounded-full text-white backdrop-blur-md hover:bg-white/20 transition-all">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+        
+        <!-- Video Feed -->
+        <div id="reader" class="absolute inset-0 w-full h-full bg-black"></div>
+        
+        <!-- Custom UI -->
+        <div id="scanner-ui" class="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none">
+            <div class="absolute inset-0 bg-black/40"></div>
+            <div id="scannerFrame" class="scanner-frame">
+                <div class="laser"></div>
+                <div class="corner tl"></div><div class="corner tr"></div>
+                <div class="corner bl"></div><div class="corner br"></div>
+            </div>
+            <div class="mt-12 text-center relative z-50">
+                <div id="scanStatusText" class="text-white font-mono text-xs tracking-[0.4em] uppercase font-bold animate-pulse drop-shadow-md">Scanning...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let wakeLock = null;
+        
+        // --- Browser Notification & Wake Lock ---
+        function requestNotify() { if("Notification" in window) Notification.requestPermission(); }
+        
+        function sendNotification(title, body) {
+            if(document.visibilityState === 'hidden' && Notification.permission === "granted") {
+                new Notification(title, { body: body });
+            }
+        }
+        
+        async function requestWakeLock() {
+            try { wakeLock = await navigator.wakeLock.request('screen'); console.log('Wake Lock Active'); } 
+            catch (err) { console.error('Wake Lock Failed', err); }
+        }
+
+        window.onload = requestNotify;
+
+        // --- Router ---
+        function router(viewId) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const navBtn = document.getElementById(`nav-${viewId}`);
+            if(navBtn) navBtn.classList.add('active');
+
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+        }
+
+        // --- P2P Core ---
+        let peer, conn, myId;
+        let selectedFiles = [], receivedChunks = [];
+        let totalSize = 0, receivedSize = 0, fileMeta = null;
+        const CHUNK_SIZE = 64 * 1024;
+
+        function initPeer() {
+            const cleanId = () => Math.random().toString(36).substr(2, 4).toUpperCase();
+            const peerId = `${cleanId()}-${cleanId()}`;
+            peer = new Peer(peerId);
+            peer.on('open', (id) => {
+                myId = id;
+                document.getElementById('myIdDisplay').innerText = id;
+                document.getElementById('statusText').innerText = "Online";
+                document.getElementById('statusDot').classList.replace('bg-slate-500', 'bg-green-500');
+                document.getElementById('statusDot').classList.remove('animate-pulse');
+            });
+            peer.on('connection', (c) => { conn = c; setupConnection(); });
+        }
+
+        function connectToPeer(id = null) {
+            const remoteId = id || document.getElementById('remoteIdInput').value.trim();
+            if(!remoteId) return;
+            conn = peer.connect(remoteId);
+            setupConnection();
+        }
+
+        function setupConnection() {
+            router('transfer');
+            requestWakeLock();
+            conn.on('open', () => {
+                document.getElementById('transferMeta').innerText = "Connected! Waiting for data...";
+                if(selectedFiles.length > 0) sendFileInfo();
+            });
+            conn.on('data', (data) => handleData(data));
+            conn.on('close', () => resetApp());
+        }
+
+        function resetApp() {
+            if(conn) { conn.close(); conn = null; }
+            if(wakeLock) { wakeLock.release(); wakeLock = null; }
+            
+            receivedChunks = []; receivedSize = 0; fileMeta = null; selectedFiles = [];
+            document.getElementById('fileInput').value = '';
+            document.getElementById('dropZone').classList.remove('hidden');
+            document.getElementById('sendReadyState').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            
+            updateProgress(0, 100);
+            document.title = "DarkDrop Elite";
+            document.getElementById('transferStatusTitle').innerText = "Syncing Data";
+            document.getElementById('progressCircle').style.stroke = "#f97316";
+            router('home');
+        }
+
+        // --- Drag & Drop ---
+        window.addEventListener('dragover', e => e.preventDefault());
+        window.addEventListener('drop', e => {
+            e.preventDefault();
+            if(e.dataTransfer.files.length) {
+                router('send');
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        document.getElementById('fileInput').onchange = (e) => handleFiles(e.target.files);
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            if(selectedFiles.length === 0) return;
+            const file = selectedFiles[0];
+            
+            document.getElementById('dropZone').classList.add('hidden');
+            document.getElementById('sendReadyState').classList.remove('hidden');
+            document.getElementById('sendReadyState').classList.add('flex');
+            
+            document.getElementById('fileNameDisplay').innerText = file.name;
+            document.getElementById('fileSizeDisplay').innerText = formatBytes(file.size);
+
+            document.getElementById('qrcode').innerHTML = "";
+            new QRCode(document.getElementById('qrcode'), { text: myId, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.L });
+        }
+
+        function sendFileInfo() {
+            const file = selectedFiles[0];
+            conn.send({ type: 'meta', name: file.name, size: file.size, mime: file.type });
+            document.getElementById('transferStatusTitle').innerText = "Sending File...";
+            sendNotification("Transfer Started", `Sending ${file.name}`);
+        }
+
+        function startSending() {
+            const file = selectedFiles[0];
+            let offset = 0;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                conn.send({ type: 'chunk', data: e.target.result });
+                offset += e.target.result.byteLength;
+                updateProgress(offset, file.size);
+                if (offset < file.size) readNextChunk();
+                else {
+                    conn.send({ type: 'end' });
+                    document.getElementById('transferStatusTitle').innerText = "Sent Successfully";
+                    document.getElementById('progressCircle').style.stroke = "#22c55e";
+                    sendNotification("Success", "File sent successfully!");
+                }
+            };
+            const readNextChunk = () => reader.readAsArrayBuffer(file.slice(offset, offset + CHUNK_SIZE));
+            readNextChunk();
+        }
+
+        function handleData(data) {
+            if(data.type === 'meta') {
+                fileMeta = data; totalSize = data.size; receivedSize = 0; receivedChunks = [];
+                document.getElementById('transferStatusTitle').innerText = "Receiving...";
+                document.getElementById('transferMeta').innerText = data.name;
+                sendNotification("Incoming File", `Receiving ${data.name}`);
+                conn.send({ type: 'ack' });
+            } 
+            else if(data.type === 'ack') startSending();
+            else if(data.type === 'chunk') {
+                receivedChunks.push(data.data);
+                receivedSize += data.data.byteLength;
+                updateProgress(receivedSize, totalSize);
+            }
+            else if(data.type === 'end') {
+                document.getElementById('transferStatusTitle').innerText = "Transfer Complete";
+                document.getElementById('transferMeta').innerText = "File ready to save";
+                document.getElementById('progressCircle').style.stroke = "#22c55e";
+                document.getElementById('downloadBtn').classList.remove('hidden');
+                sendNotification("Download Ready", "File transfer complete.");
+            }
+        }
+
+        function updateProgress(curr, total) {
+            const percent = total > 0 ? Math.min((curr / total) * 100, 100) : 0;
+            
+            const circumference = 816;
+            const offset = circumference - (percent / 100) * circumference;
+            document.getElementById('progressCircle').style.strokeDashoffset = offset;
+            document.getElementById('percentText').innerText = Math.round(percent) + '%';
+            document.getElementById('transferRate').innerText = `${formatBytes(curr)} / ${formatBytes(total)}`;
+            
+            if(total > 0 && curr < total) document.title = `(${Math.round(percent)}%) Syncing...`;
+            else if (curr >= total && total > 0) document.title = "Transfer Complete!";
+        }
+
+        function downloadFile() {
+            const blob = new Blob(receivedChunks, { type: fileMeta.mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = fileMeta.name; a.click();
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function copyId() { navigator.clipboard.writeText(myId); }
+
+        // --- Scanner ---
+        let html5QrcodeScanner;
+        function startScanner() {
+            const modal = document.getElementById('scannerModal');
+            const frame = document.getElementById('scannerFrame');
+            const status = document.getElementById('scanStatusText');
+            
+            modal.classList.remove('hidden');
+            frame.classList.remove('success');
+            status.innerText = "SEARCHING SIGNAL...";
+            status.style.color = "white";
+
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 250, height: 250 } }, (decodedText) => {
+                frame.classList.add('success');
+                status.innerText = "TARGET ACQUIRED";
+                status.style.color = "#22c55e";
+                html5QrcodeScanner.pause();
+                setTimeout(() => { stopScanner(); connectToPeer(decodedText); }, 800);
+            }).catch(err => { alert("Camera Error"); stopScanner(); });
+        }
+
+        function stopScanner() {
+            if(html5QrcodeScanner) html5QrcodeScanner.stop().then(() => html5QrcodeScanner.clear()).catch(err => {});
+            document.getElementById('scannerModal').classList.add('hidden');
+        }
+
+        initPeer();
+    </script>
+</body>
+</html>
